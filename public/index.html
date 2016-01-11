@@ -1,0 +1,205 @@
+<html>
+  <head>
+    <!-- js -->
+    <script type="text/javascript" src="https://code.jquery.com/jquery-2.2.0.min.js"></script>
+    <script type="text/javascript" src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+    <script type="text/javascript" src="https://code.highcharts.com/highcharts.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/spin.js/2.3.2/spin.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.8.1/axios.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/3.10.1/lodash.min.js"></script>
+    <!-- css -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" />
+  </head>
+  <body>
+    <!-- jumbotron -->
+    <div id="main" class="container">
+      <div class="row">
+        <div class="jumbotron">
+          <h1>Database Technology Tour!</h1>
+          <h2>Pandamonium 2016</h2>
+          <p>A brief tour of data technologies with your host @feathj!  Source code and other info <a href="http://github.com/feathj/pandamonium-2016">here</a></p>
+          <!--<img width="200" height="200" src="http://www.undercovercaterer.com/wp-content/uploads/2011/08/communist_panda_by_kamkam2828.jpg" />-->
+        </div>
+      </div>
+      <!-- toggles -->
+      <div class="row">
+        <div class="col-md-6">
+          <label for="source">Data Provider</label>
+          <select id="source" class="form-control">
+            <option value="file">File</option>
+            <option value="redis">Redis</option>
+            <option value="mongo">Mongo</option>
+            <option value="cassandra">Cassandra</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label for="db">Country</label>
+          <select id="country" class="form-control">
+          </select>
+        </div>
+      </div>
+      <!-- spinner -->
+      <div class="row">
+        <div id="spinner" class="col-md-12"></div>
+      </div>
+      <!-- chart -->
+      <div class="row">
+        <div class="col-md-12">
+          <div id="chart" style="min-width: 1000px; height: 600px; margin: 0 auto"></div>
+        </div>
+    </div>
+  </body>
+  <script type="text/javascript">
+    // Methods ////////////////////////////////////////////////////////
+    function clearCountries() {
+      var countriesEl = document.querySelector('#country');
+      countriesEl.innerHTML = '';
+      countriesEl.setAttribute('disabled', 'disabled');
+    }
+    function loadCountries(countries) {
+      var countriesEl = document.querySelector('#country');
+      var countryEl = document.createElement('option');
+      countryEl.innerHTML = 'Select Country';
+      countriesEl.appendChild(countryEl);
+      _.each(countries, function(country){
+        var countryEl = document.createElement('option');
+        countryEl.value = country;
+        countryEl.innerHTML = country;
+        countriesEl.appendChild(countryEl);
+      });
+      countriesEl.removeAttribute('disabled');
+    }
+    function loadSource(source){
+      // disable and clear countries
+      clearCountries();
+
+      // spin
+      var spinnerEl = document.querySelector('#spinner');
+      var spinner = new Spinner().spin(spinnerEl);
+      // load data
+      axios.get('/load', {
+        params: {
+          db: source
+        }
+      })
+      .then(function(response){
+        axios.get('/query_countries', {
+          params: {
+            db: source
+          }
+        })
+        .then(function(response){
+          loadCountries(response.data);
+          spinner.stop();
+        })
+        .catch(function(response){
+          spinner.stop();
+          alert(response);
+        });
+      })
+      .catch(function(response) {
+        spinner.stop();
+        alert(response);
+      });
+    }
+    function drawChart(data) {
+      hcData = [];
+      _.each(data, function(element){
+        var val = parseFloat(element.value);
+        var dt = element.time.split("-");
+        dt = Date.UTC(parseInt(dt[0]), parseInt(dt[1]), 1);
+        hcData.push([dt, val]);
+      });
+      // Begin highcharts madness
+      $('#chart').highcharts({
+        chart: {
+          zoomType: 'x'
+        },
+        title: {
+          text: 'Industrial Production Index'
+        },
+        xAxis: {
+          type: 'datetime'
+        },
+        yAxis: {
+          title: {
+            text: 'index value'
+          }
+        },
+        legend: {
+          enabled: false
+        },
+        plotOptions: {
+          area: {
+            fillColor: {
+              linearGradient: {
+                x1: 0,
+                y1: 0,
+                x2: 0,
+                y2: 1
+              },
+              stops: [
+                [0, Highcharts.getOptions().colors[0]],
+                [1, Highcharts.Color(Highcharts.getOptions().colors[0]).setOpacity(0).get('rgba')]
+              ]
+            },
+            marker: {
+              radius: 2
+            },
+            lineWidth: 1,
+            states: {
+              hover: {
+                lineWidth: 1
+              }
+            },
+            threshold: null
+          }
+        },
+        series: [{
+          type: 'area',
+          name: 'industrial production',
+          data: hcData
+        }]
+      });
+    }
+    function loadData(source, country) {
+      var spinnerEl = document.querySelector('#spinner');
+      var spinner = new Spinner().spin(spinnerEl);
+      axios.get('/query_data', {
+        params: {
+          db: source,
+          country: country
+        }
+      })
+      .then(function(response){
+        drawChart(response.data);
+        spinner.stop();
+      })
+      .catch(function(response){
+        spinner.stop();
+        alert(response);
+      });
+    }
+    // Main ///////////////////////////////////////////////////////////
+    window.onload = function() {
+      var sourcesEl = document.querySelector('#source');
+      var source = sourcesEl[sourcesEl.selectedIndex].value;
+      loadSource(source);
+
+      // change source event
+      sourcesEl.onchange = function() {
+        var source = this[this.selectedIndex].value;
+        loadSource(source);
+      }
+
+      // change country event
+      var countriesEl = document.querySelector('#country');
+      countriesEl.onchange = function() {
+        var sourcesEl = document.querySelector('#source');
+        var source = sourcesEl[sourcesEl.selectedIndex].value;
+        var country = this[this.selectedIndex].value;
+        loadData(source, country);
+      }
+    }
+  </script>
+</html>
