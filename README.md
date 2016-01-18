@@ -121,23 +121,13 @@ We have three calls that we will implement for each data source TODODODODODODODO
 
 TODO
 ====
-* Show actual graph
-* Implement a few technologies
-* Why does sinatra start again when killed?
-* Slides
+* Show timming information
+* Writeup on each tech
 
 `docker-compose stop app`
 `docker-compose run --service-ports app`
 
-Possible Technologies
-=====================
-* Postgres
-* Elasticsearch
-* Cassandra
+==================
 * DynamoDB
-* Redis
-* RethinkDB
-* MongoDB
-
-Bonus: graphdb
+* Elasticsearch
 * neo4j

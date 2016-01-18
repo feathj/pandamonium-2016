@@ -1,9 +1,14 @@
-require 'sinatra'
+require 'sinatra/base'
 require 'set'
 require 'json'
 require 'byebug'
 
 require 'redis'
+require 'mongo'
+require 'cassandra'
+require 'rethinkdb'
+
+include RethinkDB::Shortcuts
 
 class WebApp < Sinatra::Base
   # Config ############################################################
@@ -19,6 +24,12 @@ class WebApp < Sinatra::Base
       host: 'redis',
       port: 6379
     )
+    # Mongo
+    @mongo = Mongo::Client.new('mongodb://mongo:27017/panda')
+    # Cassandra
+    @cassandra = Cassandra.cluster(hosts: 'cassandra')
+    # Rethink
+    @rethink = r.connect(host: 'rethink', port: 28015)
   end
 
   # Default route #####################################################
@@ -48,7 +59,8 @@ class WebApp < Sinatra::Base
   # { "country": "USA", "time": "1966-01", "value": "50.04211" }
   get '/query_data' do
     db = params['db']
-    data = send("query_data_#{db}")
+    country = params['country']
+    data = send("query_data_#{db}", country)
 
     content_type :json
     data.sort{ |x,y| x['time'] <=> y['time']}.to_json
@@ -66,8 +78,7 @@ class WebApp < Sinatra::Base
     countries.to_a
   end
 
-  def query_data_file
-    country = params['country']
+  def query_data_file(country)
     data = []
     csv_data.each do |row|
       if row['LOCATION'] == country
@@ -86,7 +97,6 @@ class WebApp < Sinatra::Base
     countries = Set.new
     csv_data.each do |row|
       countries.add(row['LOCATION'])
-      # TODO: set value
       key = "#{row['LOCATION']}_#{row['TIME']}"
       @redis.set(key, {
         'country' => row['LOCATION'],
@@ -94,23 +104,140 @@ class WebApp < Sinatra::Base
         'value' => row['Value']
       }.to_json)
     end
-    # TODO: set countries
     @redis.set('countries', countries.to_a.to_json)
   end
 
   def query_countries_redis
-    # TODO: return countries
     @redis.get('countries')
     JSON.parse(@redis.get('countries'))
   end
 
-  def query_data_redis
-    country = params['country']
-    data = []
+  def query_data_redis(country)
+    datapoints = []
     @redis.scan_each(match: "#{country}_*") do |key|
-      data.push JSON.parse(@redis.get(key))
+      datapoints.push JSON.parse(@redis.get(key))
     end
-    data
+    datapoints
+  end
+
+  # Mongo #############################################################
+  def load_mongo
+    @mongo[:countries].drop
+    @mongo[:datapoints].drop
+
+    countries = Set.new
+    csv_data.each do |row|
+      countries.add(row['LOCATION'])
+      @mongo[:datapoints].insert_one({
+        'country' => row['LOCATION'],
+        'time' => row['TIME'],
+        'value' => row['Value']
+      })
+    end
+    countries.to_a.each do |country|
+      @mongo[:countries].insert_one({
+        'country' => country
+      })
+    end
+  end
+
+  def query_countries_mongo
+    countries = []
+    @mongo[:countries].find.each do |country|
+      countries.push(country['country'])
+    end
+    countries
+  end
+
+  def query_data_mongo(country)
+    @mongo[:datapoints].find('country' => country).to_a
+  end
+
+  # Cassandra ########################################################R
+  def load_cassandra
+    session = @cassandra.connect('system')
+    session.execute('DROP KEYSPACE IF EXISTS panda')
+    session.execute("CREATE KEYSPACE panda WITH replication = {'class': 'SimpleStrategy','replication_factor': 3}")
+    session = @cassandra.connect('panda')
+    session.execute('CREATE TABLE countries(country VARCHAR, PRIMARY KEY(country))')
+    session.execute('CREATE TABLE datapoints(id VARCHAR, country VARCHAR, time VARCHAR, value FLOAT, PRIMARY KEY(id))')
+    session.execute('CREATE INDEX idx_datapoints_country ON datapoints (country);')
+
+    countries = Set.new
+    insert = session.prepare('INSERT INTO datapoints(id, country, time, value) VALUES(?,?,?,?)')
+    csv_data.each do |row|
+      countries.add(row['LOCATION'])
+      key = "#{row['LOCATION']}_#{row['TIME']}"
+      session.execute(insert, arguments: [key, row['LOCATION'], row['TIME'], row['Value'].to_f])
+    end
+    insert = session.prepare('INSERT INTO countries(country) VALUES(?)')
+    countries.to_a.each do |country|
+      session.execute(insert, arguments: [country])
+    end
+  end
+
+  def query_countries_cassandra
+    countries = []
+    session = @cassandra.connect('panda')
+    session.execute('SELECT * FROM countries').each do |row|
+      countries.push(row['country'])
+    end
+    countries
+  end
+
+  def query_data_cassandra(country)
+    datapoints = []
+    session = @cassandra.connect('panda')
+    select = session.prepare('SELECT * FROM datapoints WHERE country = ?')
+    session.execute(select, arguments: [country]).each do |row|
+      datapoints.push(
+        'country' => row['country'],
+        'time' => row['time'],
+        'value' => row['value']
+      )
+    end
+    datapoints
+  end
+
+  # Rethink ###########################################################
+  def load_rethink
+    r.db_drop('panda').run(@rethink) rescue nil
+    r.db_create('panda').run(@rethink)
+    r.db('panda').table_create('countries', primary_key: 'country').run(@rethink)
+    r.db('panda').table_create('datapoints', primary_key: 'id').run(@rethink)
+    r.db('panda').table('datapoints').index_create('country').run(@rethink)
+
+    countries = Set.new
+    batch = []
+    csv_data.each do |row|
+      countries.add(row['LOCATION'])
+      key = "#{row['LOCATION']}_#{row['TIME']}"
+      batch.push({
+        id: key,
+        country: row['LOCATION'],
+        time: row['TIME'],
+        value: row['Value']
+      })
+      if batch.length > 200
+        r.db('panda').table('datapoints').insert(batch).run(@rethink)
+        batch.clear
+      end
+    end
+    r.db('panda').table('datapoints').insert(batch).run(@rethink) if batch.length > 0
+    countries.each do |country|
+      r.db('panda').table('countries').insert({
+        country: country
+      }).run(@rethink)
+    end
+  end
+
+  def query_countries_rethink
+    r.db('panda').table('countries')['country'].coerce_to('array').run(@rethink)
+  end
+
+  def query_data_rethink(country)
+    r.db('panda').table('datapoints').index_wait('country').run(@rethink)
+    r.db('panda').table('datapoints').get_all(country, index: 'country').coerce_to('array').run(@rethink)
   end
 
   # Helpers ###########################################################
@@ -150,6 +277,6 @@ class WebApp < Sinatra::Base
     end
     data
   end
-
-  run! if app_file == $0
 end
+
+WebApp.run!

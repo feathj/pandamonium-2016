@@ -2,9 +2,12 @@ app:
   build: .
   command: ruby app.rb
   ports:
-    - "4567"
+    - "4567:4567"
   links:
     - redis
+    - mongo
+    - cassandra
+    - rethink
   volumes:
     - ".:/app"
   environment:
@@ -13,6 +16,29 @@ app:
 redis:
   image: redis:latest
   ports:
-    - "6379"
+    - "6379:6379"
   environment:
     VIRTUAL_HOST: redis.docker
+
+mongo:
+  image: mongo:latest
+  ports:
+    - "27017:27017"
+  environment:
+    VIRTUAL_HOST: mongo.docker
+
+cassandra:
+  image: cassandra:2
+  ports:
+    - "9042:9041"
+  environment:
+    VIRTUAL_HOST: cassandra.docker
+
+rethink:
+  image: rethinkdb:latest
+  ports:
+    - "28015:28015"
+    - "29015:29015"
+    - "8080:8080"
+  environment:
+    VIRTUAL_HOST: rethink.docker

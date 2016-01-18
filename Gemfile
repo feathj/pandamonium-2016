@@ -5,3 +5,6 @@ gem 'thin'
 gem 'byebug'
 
 gem 'redis'
+gem 'mongo'
+gem 'cassandra-driver'
+gem 'rethinkdb'
