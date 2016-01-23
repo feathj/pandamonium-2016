@@ -104,30 +104,135 @@ industrial production for all countries available.  This ends up being quite a f
 use case.  We will see that some data technologies handle time series data sets better than others, and it will give us
 an idea of which technologies make the most sense for a given application.
 
+What we need to implement in our app
+====================================
+We are going to be exploring a few different database technologies, and we will need to implement three different ruby
+methods per database in a simple sinatra app.
+
+```
+def load_*
+  # 1. runs any required setup for database (create tables, indexes etc.)
+  # 2. takes data from csv_data and saves countries to database (Note that only country code will be required eg 'USA')
+  # 3. takes data from csv_data and saves datapoints to database. (country, time, and value will be required)
+end
+
+def query_countries_*
+  # returns an array of country code strings extracted from csv_data and saved to database
+  ["AUT","BEL","BRA","CAN","CHL","COL","CZE","DEU","DNK", ...]
+end
+
+def query_data_*(country)
+  # given a country code as a string, returns an array of datapoint hashes
+  [{"country":"CAN","time":"1961-01","value":"24.88589"},{"country":"CAN","time":"1961-02","value":"24.91095"}, ...]
+end
+```
+
+I have implemented the flat file methods for your reference.  You will notice that the "load" routine is blank. This is
+intentional, as the flat file implementation does not save to any database and will give us a good reference for
+performance.
+
+Running and debugging
+=====================
+To run this app simply run:
+```
+$ docker-compose pull
+$ docker-compose build
+$ docker-compose up
+```
+Open browser to: http://panda.docker/
+
+Any code changes made to the app.rb file will require a restart of the app container.
+```
+$ docker-compose stop app
+$ docker-compose start app
+```
+
+As part of this docker image, I have included the byebug gem.  Byebug doesn't work properly in the basic
+`docker-compose up` scenario.  To actually hit a byebug breakpoint, do the following:
+```
+$ docker-compose stop app
+$ docker-compose run --service-ports app
+```
+This will run the application container with service-ports, which enables proper tty and allows you to debug as normal.
 
 Redis
 =====
-Redis is a simple in memory key-value datastore.  It is generally used as a caching layer, but with added persistence
-functionality, it is also used as a primary database.
+The first technology that we will implement is Redis.  Redis is a simple in memory key-value datastore.  It is generally
+used as a caching layer, but with added persistence functionality, it is also used as a primary database in some
+applications.
 
 Key value stores are basically hash tables as a service HTAAS (not a real acronym).  You provide a string key, and they
 give you a string value back.  It also has additional support for composite values (list of strings, set of strings,
-hash of string to string)
+hash of string to string), but we will just work with the basic string to string functionality for the purposes of this
+workshop.
 
-Let's load up a redis db!
+We will be using the (redis-rb)[https://github.com/redis/redis-rb] driver for our interaction with Redis.  I have setup
+the redis client in a variable named `@redis`.  This same convention will follow all technologies that we work with.
 
-We have three calls that we will implement for each data source TODODODODODODODODODO
+Here are some basic commands to familiarize yourself with:
+```
+@redis.set("mykey_1", "hello world 1")
+@redis.set("mykey_2", "hello world 2")
+@redis.get("mykey_1")
 
+@redis.scan_each(match: "mykey_*").do |key|
+  ...
+end
+```
+Redis Implementation Notes
+--------------------------
+* Composite primary key
+* JSON serialize and deserialize
+* Scan for data query
+
+Mongo
+=====
+Implementing our application in redis probably showed you some of the pain that you can encounter when trying to
+structure / de-normalize your data to fit in a simple key-value store.  This is generally why redis is not used as a
+primary data store unless the data being stored is extremely simplistic.  Don't write redis off though, it's
+simplicity allows to be optimized in a way that complex DBMS's can't be.  Right tool, right job.
+
+Next in line of our nosql evolution is Mongo.  Mongo is known as a "document based datastore".  Basically, it accepts
+json (bson) payloads into "collections", that are assigned a primary key (unless one is provided), but since the documents are
+a first class citizen, we can start to do things like query on fields other than the primary key.  Unlike redis, many
+different native (data types)[https://docs.mongodb.org/manual/reference/bson-types/] are supported.
+
+Mongo was designed to be friendly to the developer, but maybe not quite as friendly to the devops engineer.  Getting
+started is quite easy, but keeping it performant under heavy load with many records can be tricky.  Either way, it gives
+us a great introduction to a data store with more structure and features.
+
+We will be working with the official (mongo driver)[https://docs.mongodb.org/ecosystem/tutorial/ruby-driver-tutorial/]
+
+Some basics
+```
+@mongo[:collection_name].drop
+# collections are implicitly created when insert occurs
+@mongo[:collection_name].insert_one({'key1'=> 'val1', 'key2'=> 'val2'})
+# mongo follows "query by example" convention, and creates implicit indexes on fields queried
+@mongo[:collection_name].find('key1' => 'val1').each |record|
+  ...
+end
+```
+
+Mongo Implementation Notes
+--------------------------
+* Implicit creation of table (can be explicit if required)
+* Implicit creation of indexes (can be explicit if required, which is often)
+* Type inference on document fields (again, can be explicit)
+* Elasticsearch, very similar, but amazing support for fuzzy searching on fields
+
+Cassandra
+=========
+
+Rethink
+=======
+
+NewSQL
+======
+
+Graph DB
+========
 
 TODO
 ====
 * Show timming information
-* Writeup on each tech
-
-`docker-compose stop app`
-`docker-compose run --service-ports app`
-
-==================
-* DynamoDB
-* Elasticsearch
-* neo4j
