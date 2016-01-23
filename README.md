@@ -1,7 +1,7 @@
 Pre-requisites
 ==============
 This guide will assume that you have a working docker environment, and some experience with a relational database.  We
-will be utilizing (dinghy)[https://github.com/codekitchen/dinghy] on OSX.
+will be utilizing [dinghy](https://github.com/codekitchen/dinghy) on OSX.
 
 History
 =======
@@ -99,7 +99,7 @@ fuss is all about.
 
 Quick aside about data
 ======================
-We are going to be working with a dataset provided by the OECD.  https://data.oecd.org/ We will look at monthly
+We are going to be working with a dataset provided by the [OECD](https://data.oecd.org/). We will look at monthly
 industrial production for all countries available.  This ends up being quite a few data records, so it will be a decent
 use case.  We will see that some data technologies handle time series data sets better than others, and it will give us
 an idea of which technologies make the most sense for a given application.
@@ -114,6 +114,7 @@ def load_*
   # 1. runs any required setup for database (create tables, indexes etc.)
   # 2. takes data from csv_data and saves countries to database (Note that only country code will be required eg 'USA')
   # 3. takes data from csv_data and saves datapoints to database. (country, time, and value will be required)
+  # We will always clear data out before attempting to save to prevent duplicates
 end
 
 def query_countries_*
@@ -166,7 +167,7 @@ give you a string value back.  It also has additional support for composite valu
 hash of string to string), but we will just work with the basic string to string functionality for the purposes of this
 workshop.
 
-We will be using the (redis-rb)[https://github.com/redis/redis-rb] driver for our interaction with Redis.  I have setup
+We will be using the [redis-rb](https://github.com/redis/redis-rb) driver for our interaction with Redis.  I have setup
 the redis client in a variable named `@redis`.  This same convention will follow all technologies that we work with.
 
 Here are some basic commands to familiarize yourself with:
@@ -195,13 +196,13 @@ simplicity allows to be optimized in a way that complex DBMS's can't be.  Right 
 Next in line of our nosql evolution is Mongo.  Mongo is known as a "document based datastore".  Basically, it accepts
 json (bson) payloads into "collections", that are assigned a primary key (unless one is provided), but since the documents are
 a first class citizen, we can start to do things like query on fields other than the primary key.  Unlike redis, many
-different native (data types)[https://docs.mongodb.org/manual/reference/bson-types/] are supported.
+different native [data types](https://docs.mongodb.org/manual/reference/bson-types/) are supported.
 
 Mongo was designed to be friendly to the developer, but maybe not quite as friendly to the devops engineer.  Getting
 started is quite easy, but keeping it performant under heavy load with many records can be tricky.  Either way, it gives
 us a great introduction to a data store with more structure and features.
 
-We will be working with the official (mongo driver)[https://docs.mongodb.org/ecosystem/tutorial/ruby-driver-tutorial/]
+We will be working with the official [mongo driver](https://docs.mongodb.org/ecosystem/tutorial/ruby-driver-tutorial/)
 
 Some basics
 ```
@@ -219,10 +220,40 @@ Mongo Implementation Notes
 * Implicit creation of table (can be explicit if required)
 * Implicit creation of indexes (can be explicit if required, which is often)
 * Type inference on document fields (again, can be explicit)
-* Elasticsearch, very similar, but amazing support for fuzzy searching on fields
+* Elasticsearch, very similar, but amazing support for fuzzy searching on fields, less support for data-types, range
+  queries etc.
 
 Cassandra
 =========
+We will get back to a more modern document based datastore in a minute, but lets talk about column-oriented data.
+Cassandra is basically a hybrid between a key-value database, and a tabular (or column-oriented) database.  Data records
+are organized into rows and tables, and are queried via primary key.  No joins or explicit relationships are defined,
+and records can only be queried by their primary key, unless an explicit index is created for a column in the table.
+Tables are grouped into "keyspaces".
+
+Operations on cassandra databases are generally executing using the SQL-like syntax called "CQL".  This helped with
+adoption of the technology as a large majority of software engineers are comfortable with SQL.  We will be using the
+official datastax ruby driver to interact with the data.
+
+Some basics
+```
+session = @cassandra.connect('system')
+session.execute('CREATE TABLE people(id INT, lastname VARCHAR, firstname VARCHAR, PRIMARY KEY(id))')
+
+insert = session.prepare('INSERT INTO people(id, lastname, firstname) VALUES(?,?,?)')
+session.execute(insert, arguments: [1, 'Featherstone', 'Jon')
+session.execute(insert, arguments: [2, 'Featherstone', 'Luke')
+
+select = session.prepare('SELECT * FROM people WHERE lastname = ?')
+session.execute(select, arguments: ['featherstone']).each do |row|
+  ...
+end
+
+Cassandra Implementation Notes
+------------------------------
+
+
+```
 
 Rethink
 =======
