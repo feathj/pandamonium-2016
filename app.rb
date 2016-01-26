@@ -201,7 +201,7 @@ class WebApp < Sinatra::Base
 
   # Rethink ###########################################################
   def load_rethink
-    r.db_drop('panda').run(@rethink) rescue nil
+    r.db_drop('panda').run(@rethink) rescue nil # don't hate me Tina :(
     r.db_create('panda').run(@rethink)
     r.db('panda').table_create('countries', primary_key: 'country').run(@rethink)
     r.db('panda').table_create('datapoints', primary_key: 'id').run(@rethink)

@@ -1,3 +1,9 @@
+Goals of workshop are to provide participants:
+==============================================
+* some basics of database theory, and history
+* some hands on experience with a few NoSQL technologies
+* enough background knowledge help pick right db technology for a particular application
+
 Pre-requisites
 ==============
 This guide will assume that you have a working docker environment, and some experience with a relational database.  We
@@ -248,22 +254,67 @@ select = session.prepare('SELECT * FROM people WHERE lastname = ?')
 session.execute(select, arguments: ['featherstone']).each do |row|
   ...
 end
+```
 
 Cassandra Implementation Notes
 ------------------------------
+* RDBMS end users felt pretty comfortable transitioning to cassandra thanks to CQL
+* Column-oriented data also feels a lot more MySQLish
+* A lot less implicit-y than mongo (explicit indexes)
+* Keeping a cassandra cluster healthy can be a chore
+  * JVM tuning
+  * "We need 10,000 WPM, how much hardware will we need?",  ¯\_(ツ)_/¯
 
-
-```
 
 Rethink
 =======
+The last database technology that we will cover in code is RethinkDB.  RethinkDB is a document based datastore, but it
+aims to help get past some of mongo's shortcomings. Specifically:
+  * It requires explicit indexes for querying on any field other than the primary key (which helps for consistency in
+    performance)
+  * It has a super helpful and nifty web interface for admin and querying built in
+  * It has a really cool optional pub/sub architecture that you can take advantage of
+  * Much easier to predict performance with clustering
 
-NewSQL
-======
+We will be using the official [rethink driver](https://www.rethinkdb.com/api/ruby/) for ruby.
 
-Graph DB
-========
+Some basics
+```
+r.db_create('test').run(@rethink)
+r.db('test').table_create('people', primary_key: 'id').run(@rethink)
+r.db('test').table('people').index_create('firstname').run(@rethink) # create index based on document field name
 
-TODO
-====
-* Show timming information
+r.db('test').table('people').insert({id: 1, firstname: 'Jon' ...}).run(@rethink)
+
+first_names = r.db('test').table('people')['firstname'].coerce_to('array').run(@rethink)
+jons = r.db('test').table('people').get_all('Jon', index: 'country').coerce_to('array').run(@rethink) # explicit query on index
+```
+
+Rethink Implementation Notes
+----------------------------
+* Write is slow (by default), so batching will likely be required for this app (luckily, it is easy, just insert an
+  array instead of an object. docs say that about 200 is the right sweet spot)
+* Indexes are created by supplying name of field (composite indexing is also available)
+* Nifty [coerce_to](https://www.rethinkdb.com/api/javascript/coerce_to/) function allows us to morph the response into
+  something we can use without extra logic
+
+What about NewSQL?
+==================
+The evolution of these database technologies has taught us a lot about how to make large volumes of data performant.
+So-called "NewSQL" technologies aim to take the performance, sharding simplicity, and other positive attributes from
+NoSQL technologies, and implement them in fully ACID compliant RDBMS.  Most of these technologies have not yet
+stablized, but one to keep an eye on is [CockroachDB](https://github.com/cockroachdb/cockroach)
+
+```
+CockroachDB is a distributed SQL database built on top of a transactional and consistent key:value store. The primary
+design goals are support for ACID transactions, horizontal scalability, and survivability, hence the name. CockroachDB
+implements a Raft consensus algorithm for consistency. It aims to tolerate disk, machine, rack, and even datacenter
+failures with minimal latency disruption and no manual intervention. CockroachDB nodes (RoachNodes) are symmetric; a
+design goal is homogenous deployment (one binary) with minimal configuration.
+```
+
+A few more technologies to look at
+==================================
+* DynamoDB / Riak
+* Elasticsearch
+* Others?
