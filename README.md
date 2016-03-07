@@ -155,12 +155,7 @@ $ docker-compose start app
 ```
 
 As part of this docker image, I have included the byebug gem.  Byebug doesn't work properly in the basic
-`docker-compose up` scenario.  To actually hit a byebug breakpoint, do the following in a new terminal:
-```
-$ docker-compose stop app
-$ docker-compose run app
-```
-This will run the application container with service-ports, which enables proper tty and allows you to debug as normal.
+`docker-compose up` scenario, so you will need to run "start" as we did above.
 
 Redis
 =====
